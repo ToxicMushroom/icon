@@ -20,16 +20,25 @@ categories = ["multimedia::images", "data-structures"]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[profile.dev]
+lto = true
+codegen-units = 1
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+
 [dependencies]
 freedesktop_entry_parser = { version = "2.0.1", default-features = false }
 thiserror = "2.0.17"
 xdg = "3.0.0"
 log = { version = "0.4.28", optional = true }
-qp-trie = { version = "0.8.2", default-features = false, optional = true }
+smol_str = { version = "0.3.4", optional = true }
+ahash = "0.8.12"
 
 [features]
 "log" = ["dep:log"]
-"cache" = ["dep:qp-trie"]
+"cache" = ["dep:smol_str"]
 
 [dev-dependencies]
 freedesktop-desktop-entry = "0.7.13"

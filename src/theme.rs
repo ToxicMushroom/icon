@@ -68,17 +68,8 @@ impl Theme {
         sub_dirs.sort_by_key(|sub_dir| sub_dir.size_distance(size, scale));
 
         for sub_dir in sub_dirs {
-            for base_dir in &self.info.base_dirs {
-                for file_name in &Self::possible_file_names_for(icon_name) {
-                    let path = base_dir
-                        .join(sub_dir.directory_name.as_str())
-                        .join(file_name);
-                    if path.exists()
-                        && let Some(file) = IconFile::from_path(&path)
-                    {
-                        return Some(file);
-                    }
-                }
+            if let opt_icon @ Some(_) = self.find_icon_in_directory(icon_name, sub_dir) {
+                return opt_icon
             }
         }
 

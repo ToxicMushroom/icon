@@ -1,6 +1,5 @@
 use crate::theme::DirectoryRef;
 use crate::{IconFile, Icons, Theme};
-use qp_trie::wrapper::BString;
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::sync::Arc;
@@ -142,7 +141,7 @@ impl From<Icons> for IconsCache {
 pub struct ThemeCache {
     theme: Arc<Theme>,
     // Cache of icon names to a list of files and the ref (index) of the directory they're in.
-    cache: qp_trie::Trie<BString, Vec<(DirectoryRef, IconFile)>>,
+    cache: ahash::AHashMap<smol_str::SmolStr, Vec<(DirectoryRef, IconFile)>>,
 }
 
 impl ThemeCache {
@@ -220,6 +219,7 @@ impl From<Arc<Theme>> for ThemeCache {
 mod test {
     use std::ffi::OsString;
     use crate::cache::{IconsCache, ThemeCache};
+    use crate::IconSearch;
     use crate::search::test::test_search;
 
     #[test]
@@ -248,7 +248,7 @@ mod test {
         println!("{:?}", icon);
 
         assert!(
-            theme_cache.cache.contains_key_str("happy"),
+            theme_cache.cache.contains_key("happy"),
             "cache contains happy icon"
         );
 
@@ -269,12 +269,18 @@ mod test {
         let mut icons = test_search().search().icons_cached();
 
         assert_eq!(icons.themes.len(), 2, "test themes in cache");
-        assert!(icons.themes.iter().all(|(_, c)| c.cache.count() == 0), "no icons in cache");
+        assert!(icons.themes.iter().all(|(_, c)| c.cache.len() == 0), "no icons in cache");
 
         icons.pre_populate_cache();
 
         assert_eq!(icons.themes.len(), 2, "test themes in cache");
-        assert_eq!(icons.themes[&OsString::from("TestTheme")].cache.count(), 2);
-        assert_eq!(icons.themes[&OsString::from("OtherTheme")].cache.count(), 1);
+        assert_eq!(icons.themes[&OsString::from("TestTheme")].cache.len(), 2);
+        assert_eq!(icons.themes[&OsString::from("OtherTheme")].cache.len(), 1);
+    }
+
+    #[test]
+    fn test_real_pre_population() {
+        let mut icons = IconSearch::new().search().icons_cached();
+        icons.pre_populate_cache()
     }
 }

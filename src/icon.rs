@@ -202,7 +202,7 @@ impl IconFile {
         self.path
             .file_stem()
             .and_then(|s| s.to_str())
-            .expect("protected by type's constructor")
+            .unwrap_or_default()
     }
 
     /// Create an `IconFile` from a filesystem path, deriving its filetype from its extension.
@@ -212,11 +212,8 @@ impl IconFile {
 
     /// Create an `IconFile` from an owned filesystem path, deriving its filetype from its extension.
     ///
-    /// Returns `None` if the provided path does not have a name or extension valid for icons.
+    /// Returns `None` if the provided path does not have an extension valid for icons.
     pub fn from_path_buf(path_buf: PathBuf) -> Option<IconFile> {
-        // An icon file must have a file stem.
-        path_buf.file_stem()?;
-
         let file_type = FileType::from_path_ext(&path_buf)?;
 
         Some(IconFile {
@@ -289,8 +286,8 @@ impl Display for FileType {
 
 #[cfg(test)]
 mod test {
-    use crate::IconFile;
     use crate::search::test::test_search;
+    use crate::IconFile;
     use std::collections::HashMap;
 
     #[test]
