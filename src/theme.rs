@@ -68,8 +68,8 @@ impl Theme {
         sub_dirs.sort_by_key(|sub_dir| sub_dir.size_distance(size, scale));
 
         for sub_dir in sub_dirs {
-            if let opt_icon @ Some(_) = self.find_icon_in_directory(icon_name, sub_dir) {
-                return opt_icon
+            if let Some(icon) = self.find_icon_in_directory(icon_name, sub_dir) {
+                return Some(icon)
             }
         }
 

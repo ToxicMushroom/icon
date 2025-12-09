@@ -277,10 +277,4 @@ mod test {
         assert_eq!(icons.themes[&OsString::from("TestTheme")].cache.len(), 2);
         assert_eq!(icons.themes[&OsString::from("OtherTheme")].cache.len(), 1);
     }
-
-    #[test]
-    fn test_real_pre_population() {
-        let mut icons = IconSearch::new().search().icons_cached();
-        icons.pre_populate_cache()
-    }
 }

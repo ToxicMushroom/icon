@@ -20,14 +20,6 @@ categories = ["multimedia::images", "data-structures"]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
-[profile.dev]
-lto = true
-codegen-units = 1
-opt-level = 3
-debug = false
-debug-assertions = false
-overflow-checks = false
-
 [dependencies]
 freedesktop_entry_parser = { version = "2.0.1", default-features = false }
 thiserror = "2.0.17"
