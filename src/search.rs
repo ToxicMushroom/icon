@@ -167,7 +167,7 @@ impl IconSearch<Initial> {
         // searching the base directories in order is used"
 
         // For each theme name, create a list of directories where it may be found:
-        let mut themes_directories: HashMap<OsString, Vec<PathBuf>> = HashMap::new();
+        let mut themes_directories: ahash::AHashMap<OsString, Vec<PathBuf>> = ahash::AHashMap::new();
         for (_, dir) in dirs {
             let theme_name = dir.file_name();
 
@@ -270,7 +270,7 @@ pub struct IconLocations {
     /// List of icons not belonging to any theme.
     pub standalone_icons: Vec<IconFile>,
     /// Map of icon theme identifiers to the directories where the icons live.
-    pub themes_directories: HashMap<OsString, Vec<PathBuf>>,
+    pub themes_directories: ahash::AHashMap<OsString, Vec<PathBuf>>,
 }
 
 impl IconLocations {
@@ -332,7 +332,7 @@ impl IconLocations {
     /// - Find all (transitive) dependencies of themes, performing the same operation(s) for them, and
     /// - Pruning duplicate references in the dependency graph: after `resolve`, each theme has a
     ///   _direct acyclic graph_ of its dependents computed.
-    pub fn resolve(&self) -> HashMap<OsString, Arc<Theme>> {
+    pub fn resolve(&self) -> ahash::AHashMap<OsString, Arc<Theme>> {
         self.resolve_only(self.themes_directories.keys())
     }
 
@@ -345,7 +345,7 @@ impl IconLocations {
     ///
     /// Thus, a call to `resolve_only(&["Adwaita"])` will still return a map with `Adwaita`,
     ///   `AdwaitaLegacy` and `hicolor`.
-    pub fn resolve_only<I, S>(&self, theme_names: I) -> HashMap<OsString, Arc<Theme>>
+    pub fn resolve_only<I, S>(&self, theme_names: I) -> ahash::AHashMap<OsString, Arc<Theme>>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
@@ -363,7 +363,7 @@ impl IconLocations {
         fn collect_themes(
             name: &OsStr,
             locations: &IconLocations,
-            themes: &mut HashMap<OsString, Option<ThemeInfo>>,
+            themes: &mut ahash::AHashMap<OsString, Option<ThemeInfo>>,
         ) {
             // Skip if we already have this theme.
             if themes.contains_key(name) {
@@ -395,7 +395,7 @@ impl IconLocations {
         }
 
         // Map from theme names to their info:
-        let mut themes = HashMap::new();
+        let mut themes = ahash::AHashMap::new();
 
         // collect all required themes:
         for theme_name in theme_names {
@@ -524,7 +524,7 @@ impl IconLocations {
         theme_names
             .into_iter()
             .zip(full_themes)
-            .collect::<HashMap<_, _>>()
+            .collect::<ahash::AHashMap<_, _>>()
     }
 
     /// Parse a single theme, returning its info.

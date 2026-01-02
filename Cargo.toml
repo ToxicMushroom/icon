@@ -27,6 +27,12 @@ xdg = "3.0.0"
 log = { version = "0.4.28", optional = true }
 smol_str = { version = "0.3.4", optional = true }
 ahash = "0.8.12"
+crossbeam-channel = "0.5.15"
+futures = { version = "0.3.31", features = ["thread-pool"] }
+
+[[bench]]
+name = "icon_cache"
+harness = false
 
 [features]
 "log" = ["dep:log"]
@@ -34,3 +40,4 @@ ahash = "0.8.12"
 
 [dev-dependencies]
 freedesktop-desktop-entry = "0.7.13"
+criterion = { version = "0.7", features = ["html_reports"] }

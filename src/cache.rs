@@ -1,8 +1,12 @@
 use crate::theme::DirectoryRef;
-use crate::{IconFile, Icons, Theme};
-use std::collections::HashMap;
+use crate::{DirectoryIndex, IconFile, Icons, Theme};
+use futures::executor::ThreadPool;
+use futures::future::{join, join_all};
+use futures::task::SpawnExt;
 use std::ffi::{OsStr, OsString};
+use std::iter::Zip;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 /// Caching version of [`Icons`].
 ///
@@ -22,7 +26,7 @@ pub struct IconsCache {
     /// The implementation should make sure that all keys present in `icons.themes`,
     /// also appear in this map. For the same reason, both `icons` and `themes` aren't `pub`;
     /// otherwise users could break that invariant.
-    themes: HashMap<OsString, ThemeCache>,
+    themes: ahash::AHashMap<OsString, ThemeCache>,
 }
 
 impl IconsCache {
@@ -73,29 +77,75 @@ impl IconsCache {
     /// As finding all icons may be much faster than finding many icons separately,
     /// you may opt to use this function if your application expects to be loading (almost) all
     /// icons anyway.
-    pub fn pre_populate_cache(&mut self) {
-        for (theme, dir, icon) in self.icons.find_all_icons() {
-            let theme = self.themes.get_mut(theme.info.internal_name.as_os_str());
+    pub async fn pre_populate_cache(&mut self) {
+        let pool = ThreadPool::new().expect("failed to create thread pool");
+        let start = Instant::now();
+        let mut futures = vec![];
 
-            let Some(theme) = theme else {
+        for theme in self.icons.themes.values() {
+            let theme = theme.clone();
+            let theme2 = theme.clone();
+
+            let theme_name = theme.info.internal_name.as_os_str();
+            let theme_name2 = OsString::from(theme_name);
+            let theme_cache = self.themes.remove(theme_name);
+
+            let Some(mut theme_cache) = theme_cache else {
                 #[cfg(feature = "log")]
                 log::warn!("skipping theme without a cache entry, this shouldn't ever happen!");
                 continue;
             };
 
-            let dir_ref = theme.theme.info.index.directories.iter()
-                .position(|d| std::ptr::eq(d, dir));
-
-            let Some(dir_ref) = dir_ref else {
-                #[cfg(feature = "log")]
-                log::warn!("couldn't find index of directory in theme, this should never happen!");
-                continue;
+            let (tx, rx) = crossbeam_channel::bounded::<(DirectoryRef, IconFile)>(1000);
+            let collection_thread = async {
+                for (dir_ref, icon) in rx {
+                    theme_cache
+                        .cache
+                        .entry(icon.icon_name().into())
+                        .or_insert_with(Default::default)
+                        .push((dir_ref, icon));
+                }
+                theme_cache
             };
+            let handle = pool
+                .spawn_with_handle(collection_thread)
+                .expect("failed to spawn thread");
 
-            theme.cache.entry(icon.icon_name().into())
-                .or_insert_with(Default::default)
-                .push((dir_ref, icon));
+            // Completes before collection_thread.
+            let task2 = pool
+                .spawn_with_handle(async move {
+                    for (dir_idx, dir) in theme2.info.index.directories.iter().enumerate() {
+                        // Each "dir" may map to multiple actual fs directories if the theme
+                        // has multiple base_dirs.
+                        for icon in theme2
+                            .info
+                            .base_dirs
+                            .iter()
+                            .map(|base_dir| base_dir.join(&dir.directory_name))
+                            .flat_map(|dir| dir.read_dir()) // Skip directories we can't read.
+                            .flatten() // Flatten out the dir iterator,
+                            .flatten() // and skip Err entries.
+                            .flat_map(|dir_entry| IconFile::from_path_buf(dir_entry.path()))
+                        {
+                            // And then skip all files that aren't icons.
+                            tx.send((dir_idx, icon)).expect("failed to send icon");
+                        }
+                    }
+                })
+                .expect("that we can spawn thread");
+
+            futures.push(async move {
+                let (theme, _) = join(handle, task2).await;
+                (theme, theme_name2)
+            });
         }
+        
+        for (theme_cache, theme_name) in join_all(futures).await {
+            self.themes.insert(theme_name.into(), theme_cache);
+        }
+
+        let time_taken = Instant::now() - start;
+        println!("Loop body: {time_taken:?}");
     }
 
     /// Access a known icon theme cache by name.
@@ -217,10 +267,12 @@ impl From<Arc<Theme>> for ThemeCache {
 
 #[cfg(test)]
 mod test {
-    use std::ffi::OsString;
-    use crate::cache::{IconsCache, ThemeCache};
     use crate::IconSearch;
+    use crate::cache::{IconsCache, ThemeCache};
     use crate::search::test::test_search;
+    use futures::executor::block_on;
+    use std::ffi::OsString;
+    use std::time::Instant;
 
     #[test]
     fn test_icons_cached() {
@@ -269,12 +321,27 @@ mod test {
         let mut icons = test_search().search().icons_cached();
 
         assert_eq!(icons.themes.len(), 2, "test themes in cache");
-        assert!(icons.themes.iter().all(|(_, c)| c.cache.len() == 0), "no icons in cache");
+        assert!(
+            icons.themes.iter().all(|(_, c)| c.cache.len() == 0),
+            "no icons in cache"
+        );
 
         icons.pre_populate_cache();
 
         assert_eq!(icons.themes.len(), 2, "test themes in cache");
         assert_eq!(icons.themes[&OsString::from("TestTheme")].cache.len(), 2);
         assert_eq!(icons.themes[&OsString::from("OtherTheme")].cache.len(), 1);
+    }
+
+    #[test]
+    fn test_real_pre_population() {
+        let start = Instant::now();
+        let mut icons = IconSearch::new().search().icons_cached();
+        let time_taken = Instant::now() - start;
+        println!("Theme init: {time_taken:?}");
+        let start = Instant::now();
+        block_on(std::hint::black_box(icons.pre_populate_cache()));
+        let time_taken = Instant::now() - start;
+        println!("Pre-popuplate cache: {time_taken:?}")
     }
 }
