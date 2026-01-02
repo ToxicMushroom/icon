@@ -1,7 +1,6 @@
 use crate::icon::IconFile;
 use crate::{Icons, Theme, ThemeInfo, ThemeParseError};
 use states::*;
-use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::marker::PhantomData;
 use std::path::PathBuf;
@@ -167,7 +166,8 @@ impl IconSearch<Initial> {
         // searching the base directories in order is used"
 
         // For each theme name, create a list of directories where it may be found:
-        let mut themes_directories: ahash::AHashMap<OsString, Vec<PathBuf>> = ahash::AHashMap::new();
+        let mut themes_directories: ahash::AHashMap<OsString, Vec<PathBuf>> =
+            ahash::AHashMap::new();
         for (_, dir) in dirs {
             let theme_name = dir.file_name();
 

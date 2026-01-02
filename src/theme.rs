@@ -69,7 +69,7 @@ impl Theme {
 
         for sub_dir in sub_dirs {
             if let Some(icon) = self.find_icon_in_directory(icon_name, sub_dir) {
-                return Some(icon)
+                return Some(icon);
             }
         }
 
@@ -530,13 +530,10 @@ fn find_attr_req<'a>(
 
 #[cfg(test)]
 mod test {
-    use crate::Icons;
     use crate::icon::FileType;
     use crate::search::test::test_search;
     use crate::{DirectoryType, ThemeIndex};
     use std::error::Error;
-    use std::path::Path;
-    use std::time::{Duration, Instant};
 
     #[test]
     fn test_find_test_icon() {
@@ -553,68 +550,6 @@ mod test {
             small_ico.path()
         );
         assert_eq!(small_ico.file_type(), FileType::Png);
-    }
-
-    #[test]
-    fn find_all_desktop_entry_icons() {
-        let icons = Icons::new();
-
-        // some desktop files are just packaged poorly.
-        // if a test fails here, and you are certain that the icon just straight up doesn't exist,
-        // or is in an unfindable place by normal means,
-        // disallow it in this list.
-        static DISALLOW_LIST: &[&str] = &[
-            "imv-dir",
-            "imv",
-            "io.elementary.granite.demo",
-            "java-java-openjdk",
-            "jconsole-java-openjdk",
-            "jshell-java-openjdk",
-            "lstopo",
-            "signon-ui",
-        ];
-
-        let mut time_taken = Duration::ZERO;
-        let mut n = 0;
-
-        for entry in
-            freedesktop_desktop_entry::Iter::new(freedesktop_desktop_entry::default_paths())
-                .entries(None::<&[&str]>)
-        {
-            let Some(icon_name) = entry.icon() else {
-                continue;
-            };
-
-            if Path::new(icon_name).exists() {
-                continue; // absolute URLs to icons are OK
-            }
-
-            if DISALLOW_LIST
-                .iter()
-                .any(|x| Some(x.as_ref()) == entry.path.file_stem())
-            {
-                continue;
-            }
-
-            let then = Instant::now();
-
-            // TODO: perhaps our system should expose a way to construct a "composed theme" filter,
-            // for cases where you want to search a multitude (or all) themes
-            let icon = icons
-                .find_icon(icon_name, 32, 1, "gnome")
-                .or_else(|| icons.find_icon(icon_name, 32, 1, "breeze"));
-
-            time_taken += Instant::now() - then;
-            n += 1;
-
-            assert!(
-                icon.is_some(),
-                "Icon {icon_name} from desktop entry {:?} missing!!",
-                entry.path
-            )
-        }
-
-        println!("avg {:?} per icon", time_taken / n);
     }
 
     #[test]

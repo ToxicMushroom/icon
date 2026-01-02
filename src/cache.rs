@@ -1,12 +1,11 @@
 use crate::theme::DirectoryRef;
-use crate::{DirectoryIndex, IconFile, Icons, Theme};
+use crate::{IconFile, Icons, Theme};
 use futures::executor::ThreadPool;
 use futures::future::{join, join_all};
 use futures::task::SpawnExt;
 use std::ffi::{OsStr, OsString};
-use std::iter::Zip;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Caching version of [`Icons`].
 ///
@@ -139,9 +138,9 @@ impl IconsCache {
                 (theme, theme_name2)
             });
         }
-        
+
         for (theme_cache, theme_name) in join_all(futures).await {
-            self.themes.insert(theme_name.into(), theme_cache);
+            self.themes.insert(theme_name, theme_cache);
         }
 
         let time_taken = Instant::now() - start;

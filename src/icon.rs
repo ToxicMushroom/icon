@@ -1,5 +1,4 @@
-use crate::theme::DirectoryRef;
-use crate::{IconSearch, Theme};
+use crate::{DirectoryIndex, IconSearch, Theme};
 use std::ffi::{OsStr, OsString};
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
@@ -88,10 +87,8 @@ impl Icons {
     /// Find all icons in all themes, in all of their directories.
     ///
     /// Also see [`find_all_icons_filtered`](Icons::find_all_icons_filtered).
-    pub fn find_all_icons(
-        &self,
-    ) -> impl Iterator<Item=(Arc<Theme>, impl Iterator<Item=(DirectoryRef, IconFile)>)> {
-        self.find_all_icons_filtered(|_| true)
+    pub fn find_all_icons(&self) -> impl Iterator<Item = (Arc<Theme>, &DirectoryIndex, IconFile)> {
+        self.find_all_icons_filtered(|_| true, |_| true, |_| true)
     }
 
     /// Find all icons in all themes, in all of their directories, filtered at each stage by a predicate.
@@ -133,7 +130,9 @@ impl Icons {
     pub fn find_all_icons_filtered<'a>(
         &'a self,
         filter_theme: impl Fn(&Theme) -> bool + 'a,
-    ) -> impl Iterator<Item=(Arc<Theme>, impl Iterator<Item=(DirectoryRef, IconFile)>)> {
+        filter_directory: impl Fn(&DirectoryIndex) -> bool + 'a,
+        filter_icon: impl Fn(&IconFile) -> bool + Clone + 'a,
+    ) -> impl Iterator<Item = (Arc<Theme>, &'a DirectoryIndex, IconFile)> {
         // This function conjures up a big iterator over all icons,
         // in all themes, in all theme directories. It does that by chaining (with `zip` and `repeat`)
         // each "level" of the search together:
@@ -144,30 +143,40 @@ impl Icons {
             .values()
             .filter(move |theme| filter_theme(theme.as_ref()));
 
+        // Create an iterator that yields each icon theme × icon theme's directories
+        // Item = (&Arc<Theme>, &DirectoryIndex)
+        let dirs = themes
+            .flat_map(|theme| {
+                std::iter::zip(
+                    std::iter::repeat(theme),
+                    theme.info.index.directories.iter(),
+                )
+            })
+            .filter(move |(_, dir)| filter_directory(dir));
+
         // Then, for each pair of Theme and DirectoryIndex,
         // find all files in each suitable directory (which may be multiple, if the theme has many
         // base directories).
         // Item = ((&Arc<Theme>, &DirectoryIndex), IconFile)
-        themes.map(move |theme| {
-            let dirs = theme.info.index.directories.iter().enumerate();
-            let icon_with_dirref_iter = dirs.flat_map(move |(dir_idx, dir)| {
-                // Each "dir" may map to multiple actual fs directories if the theme
-                // has multiple base_dirs.
-                let dir_file_iterator = theme
-                    .info
-                    .base_dirs
-                    .iter()
-                    .map(|base_dir| base_dir.join(&dir.directory_name))
-                    .flat_map(|dir| dir.read_dir()) // Skip directories we can't read.
-                    .flatten() // Flatten out the dir iterator,
-                    .flatten() // and skip Err entries.
-                    .flat_map(|dir_entry| IconFile::from_path_buf(dir_entry.path())); // And then skip all files that aren't icons.
+        dirs.flat_map(move |(theme, dir)| {
+            // Each "dir" may map to multiple actual fs directories if the theme
+            // has multiple base_dirs.
+            let filter_icon = filter_icon.clone();
+            let dir_file_iterator = theme
+                .info
+                .base_dirs
+                .iter()
+                .map(|base_dir| base_dir.join(&dir.directory_name))
+                .flat_map(|dir| dir.read_dir()) // Skip directories we can't read.
+                .flatten() // Flatten out the dir iterator,
+                .flatten() // and skip Err entries.
+                .flat_map(|dir_entry| IconFile::from_path_buf(dir_entry.path())) // And then skip all files that aren't icons.
+                .filter(move |icon| filter_icon(icon));
 
-                std::iter::zip(std::iter::repeat(dir_idx), dir_file_iterator)
-            });
-            // And finally, turn the nested tuple ((a,b), c) into (a, b, c)
-            (theme.clone(), icon_with_dirref_iter)
+            std::iter::zip(std::iter::repeat((theme, dir)), dir_file_iterator)
         })
+        // And finally, turn the nested tuple ((a,b), c) into (a, b, c)
+        .map(|((a, b), c)| /*uncurry*/ (a.clone(), b, c))
     }
 }
 
@@ -284,12 +293,10 @@ mod test {
     fn test_find_all_icons() {
         let icons = test_search().search().icons();
         let mut map: HashMap<String, Vec<IconFile>> = Default::default();
-        for (_, iter) in icons.find_all_icons() {
-            for (_, icon) in iter {
-                map.entry(icon.icon_name().to_owned())
-                    .or_insert_with(Default::default)
-                    .push(icon)
-            }
+        for (_, _, icon) in icons.find_all_icons() {
+            map.entry(icon.icon_name().to_owned())
+                .or_insert_with(Default::default)
+                .push(icon)
         }
 
         // "beautiful sunset" has 3 icons:
