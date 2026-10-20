@@ -1,5 +1,5 @@
 use crate::ThemeParseError::MissingRequiredAttribute;
-use crate::icon::IconFile;
+use crate::icon::{FileType, IconFile};
 use freedesktop_entry_parser::low_level::{SectionBytes, SectionBytesIter};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -48,10 +48,12 @@ impl Theme {
     ///
     /// Do not use this function if you need normal icon finding behaviour: use [find_icon](Theme::find_icon) instead.
     pub fn find_icon_here(&self, icon_name: &str, size: u32, scale: u32) -> Option<IconFile> {
+        let file_names = Self::possible_file_names_for(icon_name);
+
         // first, try to find an exact icon size match:
         let exact_sub_dirs = self.exact_sub_dirs_for(size, scale);
         if let Some(exact_match_icon) = exact_sub_dirs
-            .flat_map(|exact_sub_dir| self.find_icon_in_directory(icon_name, exact_sub_dir))
+            .flat_map(|exact_sub_dir| self.find_icon_in_directory(&file_names, exact_sub_dir))
             .next()
         {
             // and return it if found!
@@ -64,11 +66,18 @@ impl Theme {
         // we opt to do the hopefully _less expensive_ operation of sorting the subdirectories instead,
         // from the smallest size_distance to largest.
         // that gives us the assurance that the first icon found, is the best one.
-        let mut sub_dirs = self.info.index.directories.iter().collect::<Vec<_>>();
+        // (directories matching the size exactly have already been searched above)
+        let mut sub_dirs = self
+            .info
+            .index
+            .directories
+            .iter()
+            .filter(|sub_dir| !sub_dir.matches_size(size, scale))
+            .collect::<Vec<_>>();
         sub_dirs.sort_by_key(|sub_dir| sub_dir.size_distance(size, scale));
 
         for sub_dir in sub_dirs {
-            if let Some(icon) = self.find_icon_in_directory(icon_name, sub_dir) {
+            if let Some(icon) = self.find_icon_in_directory(&file_names, sub_dir) {
                 return Some(icon)
             }
         }
@@ -76,18 +85,49 @@ impl Theme {
         None
     }
 
+    /// All icon files in one of this theme's directories, in each of its base directories.
+    ///
+    /// Directories that can't be read, and files that aren't icons, are skipped.
+    pub(crate) fn icon_files_in<'a>(
+        &'a self,
+        directory: &'a DirectoryIndex,
+    ) -> impl Iterator<Item = IconFile> + 'a {
+        self.info
+            .base_dirs
+            .iter()
+            .flat_map(|base_dir| Self::icon_files_in_directory_index(base_dir, directory))
+    }
+
+    /// All icon files in the directory index.
+    ///
+    /// Read errors and files that aren't icons are skipped.
+    pub(crate) fn icon_files_in_directory_index(
+        base_dir: &Path,
+        directory: &DirectoryIndex,
+    ) -> impl Iterator<Item = IconFile> {
+        base_dir
+            .join(&directory.directory_name)
+            .read_dir()
+            .into_iter() // Skip directories we can't read,
+            .flatten()
+            .flatten() // and Err entries.
+            .flat_map(|dir_entry| IconFile::from_path_buf(dir_entry.path())) // And then skip all files that aren't icons.
+    }
+
     #[allow(unused)] // Used with certain crate features.
     pub(crate) fn find_icon_files(
         &self,
         icon_name: &str,
     ) -> impl Iterator<Item = (DirectoryRef, IconFile)> {
+        let file_names = Self::possible_file_names_for(icon_name);
+
         self.info
             .index
             .directories
             .iter()
             .enumerate()
-            .flat_map(|(index, di)| {
-                self.find_icon_in_directory(icon_name, di)
+            .flat_map(move |(index, di)| {
+                self.find_icon_in_directory(&file_names, di)
                     .map(|icon| (index, icon))
             })
     }
@@ -104,28 +144,27 @@ impl Theme {
             .filter(move |sub_dir| sub_dir.matches_size(size, scale))
     }
 
+    /// The file names an icon may have, in order of preference.
     fn possible_file_names_for(icon_name: &str) -> [String; 3] {
-        const EXTENSIONS: [&str; 3] = ["png", "xpm", "svg"];
-
-        EXTENSIONS.map(|ext| format!("{icon_name}.{ext}"))
+        FileType::types().map(|file_type| format!("{icon_name}.{}", file_type.ext()))
     }
 
+    /// Find the first of `file_names` (see [`possible_file_names_for`](Self::possible_file_names_for))
+    /// that exists in `directory`, in any of this theme's base directories.
     pub(crate) fn find_icon_in_directory(
         &self,
-        icon_name: &str,
+        file_names: &[String; 3],
         directory: &DirectoryIndex,
     ) -> Option<IconFile> {
-        let file_names = Self::possible_file_names_for(icon_name);
-
         for base_dir in &self.info.base_dirs {
-            for file_name in &file_names {
-                let path = base_dir
-                    .join(directory.directory_name.as_str())
-                    .join(file_name);
+            let dir = base_dir.join(directory.directory_name.as_str());
+
+            for file_name in file_names {
+                let path = dir.join(file_name);
 
                 let path_exists = path.exists();
 
-                if path_exists && let Some(file) = IconFile::from_path(&path) {
+                if path_exists && let Some(file) = IconFile::from_path_buf(path) {
                     // exact match!
                     return Some(file);
                 }
@@ -572,6 +611,8 @@ mod test {
             "jshell-java-openjdk",
             "lstopo",
             "signon-ui",
+            "bluetooth-sendto",
+            "fluid1.3"
         ];
 
         let mut time_taken = Duration::ZERO;
@@ -580,6 +621,7 @@ mod test {
         for entry in
             freedesktop_desktop_entry::Iter::new(freedesktop_desktop_entry::default_paths())
                 .entries(None::<&[&str]>)
+                .filter(|e| !e.no_display())
         {
             let Some(icon_name) = entry.icon() else {
                 continue;

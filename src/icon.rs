@@ -164,14 +164,7 @@ impl Icons {
                 // has multiple base_dirs.
                 let filter_icon = filter_icon.clone();
                 let dir_file_iterator = theme
-                    .info
-                    .base_dirs
-                    .iter()
-                    .map(|base_dir| base_dir.join(&dir.directory_name))
-                    .flat_map(|dir| dir.read_dir()) // Skip directories we can't read.
-                    .flatten() // Flatten out the dir iterator,
-                    .flatten() // and skip Err entries.
-                    .flat_map(|dir_entry| IconFile::from_path_buf(dir_entry.path())) // And then skip all files that aren't icons.
+                    .icon_files_in(dir)
                     .filter(move |icon| filter_icon(icon));
 
                 std::iter::zip(std::iter::repeat((theme, dir)), dir_file_iterator)
@@ -273,8 +266,21 @@ impl FileType {
     }
 
     /// Returns an array of all file types that icons may appear as.
+    ///
+    /// When an icon exists in several file types in the same directory, they're preferred in this
+    /// order, as dictated by the [icon lookup](https://specifications.freedesktop.org/icon-theme/latest/#icon_lookup)
+    /// of the Icon Theme specification.
     pub const fn types() -> [FileType; 3] {
-        [FileType::Png, FileType::Xpm, FileType::Svg]
+        [FileType::Png, FileType::Svg, FileType::Xpm]
+    }
+
+    /// Where this file type ranks in [`types`](Self::types): lower is preferred.
+    #[cfg(feature = "cache")]
+    pub(crate) fn preference(self) -> usize {
+        Self::types()
+            .iter()
+            .position(|file_type| *file_type == self)
+            .expect("`types` contains every file type")
     }
 }
 
@@ -287,8 +293,18 @@ impl Display for FileType {
 #[cfg(test)]
 mod test {
     use crate::search::test::test_search;
-    use crate::IconFile;
+    use crate::{FileType, IconFile};
     use std::collections::HashMap;
+
+    #[test]
+    fn test_file_types_in_spec_order() {
+        assert_eq!(FileType::types(), [FileType::Png, FileType::Svg, FileType::Xpm]);
+
+        #[cfg(feature = "cache")]
+        for (preference, file_type) in FileType::types().into_iter().enumerate() {
+            assert_eq!(file_type.preference(), preference);
+        }
+    }
 
     #[test]
     fn test_find_all_icons() {

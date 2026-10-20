@@ -24,7 +24,7 @@
 //! By default, **no features** are enabled.
 //!
 //! - **`log`**: Enable logging, which introduces a dependency on the `log` crate.
-//! - **`cache`**: Enables the caching versions of [`Icons`] and [`Theme`] ([`IconsCache`] and [`ThemeCache`]), which introduces a dependency on `qp-trie`.
+//! - **`cache`**: Enables the caching versions of [`Icons`] and [`Theme`] ([`IconsCache`] and [`ThemeCache`]), which introduces a dependency on `smol_str`.
 //!
 //! # Icon matching
 //!

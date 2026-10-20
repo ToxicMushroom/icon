@@ -22,10 +22,10 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 freedesktop_entry_parser = { version = "2.0.1", default-features = false }
-thiserror = "2.0.17"
+thiserror = "2.0.21"
 xdg = "3.0.0"
-log = { version = "0.4.28", optional = true }
-smol_str = { version = "0.3.4", optional = true }
+log = { version = "0.4.34", optional = true }
+smol_str = { version = "0.3.7", optional = true }
 ahash = "0.8.12"
 
 [features]
@@ -33,4 +33,18 @@ ahash = "0.8.12"
 "cache" = ["dep:smol_str"]
 
 [dev-dependencies]
-freedesktop-desktop-entry = "0.7.13"
+freedesktop-desktop-entry = "0.8.4"
+criterion = "0.8.2"
+icon = { path = ".", features = ["cache"] } # Used by ./benches
+
+[lib]
+# Lib does not contain a criterion harness -> would error when [criterion options] are passed to `cargo bench`. E.g. `cargo bench -- --save-baseline before`
+bench = false
+
+[[bench]]
+name = "hicolor_icons"
+harness = false # criterion manages the harness
+
+[[bench]]
+name = "all_themes"
+harness = false
